@@ -1,0 +1,120 @@
+---
+title: "Barbell Lift Prediction Analysis"
+author: "Villads J"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This report aims to predict the manner in which participants performed barbell lifts using data collected from accelerometers. The "classe" variable in the training set represents the manner of execution and is the target variable for this analysis. 
+
+## Data Loading and Preprocessing
+
+First the training and test data is loaded.
+```{r data-loading}
+# Load required libraries
+library(caret)
+library(dplyr)
+library(ggplot2)
+
+# Load data
+training_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training_data <- read.csv(training_url, na.strings = c("NA", "", "#DIV/0!"))
+testing_data <- read.csv(test_url, na.strings = c("NA", "", "#DIV/0!"))
+
+# Inspect data structure
+str(training_data)
+```
+
+### Data Cleaning
+
+From inspecting the data, we see a lot of Na values and index coulmns with no predictive value.
+So we remove  coulmns with more than  95 % missing values, Remove coulmns with near zero variance, and ensure class is a factor. 
+
+```{r data-cleaning}
+nzv <- nearZeroVar(training_data)
+training_data <- training_data[, -nzv]
+
+missing_data <- sapply(training_data, function(x) mean(is.na(x)))
+training_data <- training_data[, missing_data < 0.95]
+
+training_data <- training_data[, -(1:5)]
+
+training_data$classe <- as.factor(training_data$classe)
+```
+
+## Exploratory Data Analysis
+
+Now we produce a summery of the cleaned data and try to plot of the variable in a pairwise scatterplots of multiple variables in a grid format, which is useful for visually exploring relationships between variables.
+```{r exploratory-analysis}
+# Distribution of the target variable
+summary(training_data$classe)
+
+numeric_columns <- sapply(training_data, is.numeric)
+numeric_training_data <- training_data[, numeric_columns]
+
+# Use only the first 5 numeric columns for the pairs plot
+pairs(numeric_training_data[, 1:5], col = training_data$classe)
+```
+
+## Model Building
+
+### Data Splitting
+
+We split the training data into a training and validation test to reduce the risk of overfitting.
+```{r data-splitting}
+set.seed(1234)
+training_index <- createDataPartition(training_data$classe, p = 0.7, list = FALSE)
+training_set <- training_data[training_index, ]
+validation_set <- training_data[-training_index, ]
+```
+
+### Model Selection
+
+We use the randomoforrest model with 5-fold cross validation. The sample size is reduced to 5000 samples to reduce the training time. 
+```{r model-selection}
+# Train a Random Forest model
+set.seed(1234)
+training_sample <- training_set[sample(nrow(training_set), size = 5000), ]  # Reduce to 5,000 rows
+model_rf <- train(
+  classe ~ ., 
+  data = training_sample, 
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  importance = TRUE
+)
+
+print(model_rf)
+```
+
+
+## Model Evaluation
+We now plot the confusion matrix of the prediction from out validation set. 
+```{r model-evaluation}
+# Predict on validation set
+predictions <- predict(model_rf, validation_set)
+confusion_matrix <- confusionMatrix(predictions, validation_set$classe)
+
+print(confusion_matrix)
+```
+
+## Predicting Test Cases
+
+```{r test-prediction}
+# Predict on test set
+test_predictions <- predict(model_rf, testing_data)
+
+# Display predictions
+test_predictions
+```
+
+## Conclusion
+
+This analysis demonstrated the use of Random Forest to predict barbell lift execution. The model was evaluated using cross-validation and showed strong performance on the validation set. 
+
